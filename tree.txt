@@ -1,0 +1,44 @@
+/src
+  main.py
+  config.py
+
+  core/
+    simulation.py
+    time_manager.py
+    serializer.py
+
+  world/
+    world.py             # struttura del mondo (mappa + ecosistema)
+    biome.py             # tipi di biomi e proprietà
+    map_generator.py     # generazione procedural
+    physics.py           # movimento, interazioni base
+    resources.py         # atomi, risorse, energia
+
+  pixel/
+    pixel.py             # singolo pixel (cellula)
+    genome.py            # tratti, mutazioni
+    metabolism.py        # consumo risorse
+    reproduction.py      # regole di riproduzione
+    behaviors.py         # AI elementare (heuristic/policy)
+    pixel_manager.py     # gestione di tutti i pixel
+
+  events/
+    event_system.py      # gestione e dispatch
+    world_events.py
+    pixel_events.py
+
+  rendering/
+    renderer.py          # interfaccia astratta
+    arcade_renderer.py   # implementazione con Arcade
+    debug_renderer.py
+
+  ui/
+    hud.py               # info NPC
+    input.py             # click, selezione cellula
+    panels.py            # pannelli info
+
+  utils/
+    math_utils.py
+    random_utils.py
+    profiler.py
+    logger.py
