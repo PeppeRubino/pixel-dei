@@ -1,33 +1,37 @@
 /src
-  main.py                # entry point simulazione Arcade
+  main.py                  # entry point simulazione; crea World, PixelManager, Simulation e lancia GUI DearPyGui
+
+  simulation/
+    core.py                # classe Simulation: tempo globale, velocità, pausa; delega gli step a World + PixelManager
 
   world/
-    world.py             # mappa, campi climatici e biomi
-    biome.py             # definizione biomi e colori
-    map_generator.py     # generazione procedurale del mondo
-    config.py            # costanti globali del clima
-    environment.py       # canali ambientali per bioma (LIGHT, H2S, ecc.)
-    phisics.py           # movimento / interazioni base (placeholder)
-    resources.py         # atomi, risorse e ResourceGrid
+    world.py               # mappa globale, campi continui (elevazione, temperatura, umidità), biomi, gas atmosferici
+    biome.py               # definizione enum Biome, colori, logica di classificazione biomi
+    map_generator.py       # generazione procedurale del pianeta (rumore, soglie, continenti, isole, oceani)
+    config.py              # costanti climatiche e parametri globali del mondo
+    environment.py         # canali ambientali per bioma (LIGHT, ORGANIC_SOUP, H2S, FE2, CO2, HEAT_GRADIENT)
+    phisics.py             # placeholder per futura fisica (correnti, vento, ecc.)
+    resources.py           # definizione atomi / resource types e ResourceGrid per nutrienti e tracce locali
 
   pixel/
-    pixel.py             # singolo pixel (cellula) per debug/serializzazione
-    genome.py            # rappresentazione e similarità genomica
-    metabolism.py        # risorse interne, metabolismo e costi
-    reproduction.py      # logica di divisione 1->2 e helper sessuali
-    behaviors.py         # AI elementare (heuristiche di movimento)
-    pixel_manager.py     # gestione di tutti i pixel, update per tick
-    traits.py            # tratti evolutivi di alto livello e prerequisiti
-
-  commands/
-    mouse_input.py       # gestione input mouse e delega ad ArcadeRenderer
+    pixel.py               # definizione minimale di Pixel per debug/serializzazione
+    genome.py              # vettore genomico, similarità, random_genome neutrale + decode_traits (tratti evolutivi attivi/skill)
+    metabolism.py          # risorse interne (ENERGY, ORGANICS, MINERALS, MEMBRANE, INFO_ORDER) e metabolismo ambiente→risorse
+    reproduction.py        # regole di divisione 1→2: gene di replicazione, soglie di risorse, mutazioni sul genoma
+    behaviors.py           # heuristiche di movimento (decide_move) usate solo da linee con motilità avanzata
+    identity.py            # naming semantico: FluxUnit / FunctionalLineage / Species + tags metabolici/energetici/strutturali
+    traits.py              # ~100 tratti evolutivi di alto livello e prerequisiti (locomozione, sensi, termoregolazione, ecc.)
+    pixel_manager.py       # gestione vettoriale di tutti i pixel: spawn, step per tick, motilità a livelli, uso skill/traits, riproduzione
 
   rendering/
-    renderer.py          # interfaccia astratta dei renderer
-    arcade_renderer.py   # renderer grafico principale (Arcade + GUI)
-    debug_renderer.py    # renderer testuale/headless
+    renderer.py            # interfaccia astratta dei renderer (contratto comune per debug/GUI)
+    debug_renderer.py      # renderer testuale/headless per simulazioni senza interfaccia grafica
+
+  gui/
+    dpg_app.py             # GUI principale in DearPyGui: una sola finestra con mappa, controlli, stato globale, pixel selezionato, grafici, log
+    layout.py              # costanti di layout/stile (dimensioni e posizioni pannelli, margini, ecc.)
+    pyglet_view.py         # vecchio renderer Pyglet (legacy/esperimenti), non più usato da main ma tenuto come riferimento
 
   ui/
-    input.py             # helper input e bottoni UI
-    panels.py            # layout e pannelli stile macOS
+    input.py               # helper di input/logica per i controlli (play, pausa, velocità, overlay, ecc.)
 

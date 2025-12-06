@@ -121,8 +121,9 @@ def biome_from_env(
     # EXTREME ALTITUDE (MOUNTAINS, GLACIERS, VOLCANOES)
     # ------------------------
 
-    if alt > 0.85 and temp < 0.35 and lat_frac < 0.25:
-        # High + cold + near poles -> glaciers
+    # Glaciers solo a latitudini sufficientemente polari, non all'equatore
+    if alt > 0.85 and temp < 0.35 and lat_frac < 0.35:
+        # High + cold + mid/high latitudes -> glaciers
         return Biome.GLACIER
 
     if alt > 0.80 and hum < 0.25 and temp > 0.6:
@@ -130,7 +131,8 @@ def biome_from_env(
         return Biome.VOLCANIC
 
     if alt > 0.80:
-        if temp < 0.35:
+        # Neve perenne solo fuori dalla fascia tropicale
+        if temp < 0.35 and lat_frac < 0.4:
             return Biome.SNOW
         return Biome.MOUNTAIN
 
@@ -229,4 +231,3 @@ def biome_from_env(
     # ------------------------
 
     return Biome.GRASSLAND
-

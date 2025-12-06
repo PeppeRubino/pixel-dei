@@ -20,6 +20,6 @@ TEMP_NOISE_AMPL_C = 6.0
 HUMIDITY_OCEAN = 1.0
 HUMIDITY_LAND_SCALE = 0.85
 
-# Percentile used to decide how much of the planet is land vs ocean
-# Slightly higher value -> less land, more fragmented continents/islands
-CONTINENT_THRESHOLD_PERCENTILE = 60.0
+# Percentile used to decide how much of the planet is land vs ocean.
+# Valori più alti => meno terra, più oceano / isole frastagliate.
+CONTINENT_THRESHOLD_PERCENTILE = 70.0

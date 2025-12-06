@@ -80,12 +80,32 @@ def step_pixel_metabolism(manager, idx: int, env_inputs: Dict[str, float], dt: f
     # Simple bounds on fluxes
     flux_internal = np.clip(flux_internal, -1.0, 1.0)
 
+    # Trait-based skill modifiers: read active traits if present on manager
+    traits = getattr(manager, "traits", None)
+    active_traits = traits[idx] if traits is not None and idx < len(traits) else set()
+
     # Basal metabolic costs (energy + membrane maintenance)
     basal_energy_cost = 0.001
     membrane_cost = 0.0005 * stocks[IDX_MEMBRANE]
 
     # Apply fluxes
     stocks += flux_internal.astype(np.float32) * dt
+
+    # Skill: photosynthesis → extra ENERGY from LIGHT
+    if "photosynthesis" in active_traits:
+        light = float(env_inputs.get("LIGHT", 0.0))
+        stocks[IDX_ENERGY] += 0.2 * light * dt
+    # Skill: chemosynthesis → extra ENERGY from redox gradients
+    if "chemosynthesis" in active_traits:
+        redox = float(env_inputs.get("H2S", 0.0)) + float(env_inputs.get("FE2", 0.0))
+        stocks[IDX_ENERGY] += 0.2 * redox * dt
+    # Skill: antifreeze / cold_tolerance → riducono il costo basale
+    if "antifreeze_proteins" in active_traits or "cold_tolerance" in active_traits:
+        basal_energy_cost *= 0.6
+    # Skill: stationary / roots → maggiore accumulo di ORGANICS
+    if "roots" in active_traits or "stationary" in active_traits:
+        organics_bonus = float(env_inputs.get("ORGANIC_SOUP", 0.0))
+        stocks[IDX_ORGANICS] += 0.1 * organics_bonus * dt
 
     # Apply costs
     stocks[IDX_ENERGY] -= (basal_energy_cost + membrane_cost) * dt

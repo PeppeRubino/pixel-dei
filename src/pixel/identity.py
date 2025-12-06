@@ -13,7 +13,7 @@ Name format (parts may be omitted if not yet emerse):
 
     [BASE] - [METABOLISM] - [ENERGY] - [STRUCTURE]
 """
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Set
 
 import numpy as np
 
@@ -29,49 +29,37 @@ def _compute_metabolic_signals(manager, idx: int) -> Tuple[float, float, float]:
     return metabolic_stress, energy_deficit_signal, homeostasis_error
 
 
-def _base_tag(manager, idx: int) -> str:
-    """Ontological base: FluxUnit / FunctionalLineage / Species."""
+def _base_tag(manager, idx: int, traits: Set[str]) -> str:
+    """Ontological base: FluxUnit / FunctionalLineage / Species.
+
+    Tutte le unità iniziali, senza tratti, sono semplicemente FluxUnit.
+    FunctionalLineage/Species emergono solo con età e stabilità.
+    """
+    if not traits:
+        return "FluxUnit"
     if not hasattr(manager, "birth_time"):
         return "FluxUnit"
     age = float(manager.time) - float(manager.birth_time[idx])
     metabolic_stress, _, _ = _compute_metabolic_signals(manager, idx)
-    if age < 200.0:
+    if age < 500.0:
         return "FluxUnit"
     if metabolic_stress < 0.05:
         return "FunctionalLineage"
     return "Species"
 
 
-def _metabolism_tag(env_inputs: Dict[str, float]) -> Tuple[str, str]:
-    """Derive metabolism tag + human-readable descriptor from dominant environmental channel."""
-    if not env_inputs:
+def _metabolism_tag(traits: Set[str]) -> Tuple[str, str]:
+    """Derive metabolism tag + description from active traits, not solo ambiente."""
+    if not traits:
         return "", ""
 
-    light = float(env_inputs.get("LIGHT", 0.0))
-    organics = float(env_inputs.get("ORGANIC_SOUP", 0.0))
-    redox = float(env_inputs.get("H2S", 0.0)) + float(env_inputs.get("FE2", 0.0))
-
-    vals = np.array([light, organics, redox], dtype=float)
-    labels = ["Phototrophic", "Heterotrophic", "Chemotrophic"]
-    trait_desc = [
-        "Photosynthetic conversion",
-        "Organic-matter energy conversion",
-        "Redox gradient conversion",
-    ]
-
-    total = float(vals.sum())
-    if total <= 1e-6:
-        return "", ""
-
-    order = np.argsort(vals)[::-1]
-    top, second = order[0], order[1]
-    v_top, v_second = vals[top], vals[second]
-
-    # if several channels comparable, consider mixotroph
-    if v_second > 0.5 * v_top and v_second > 0.1:
-        return "Mixotrophic", "Multiple concurrent energy pathways"
-
-    return labels[top], trait_desc[top]
+    if "photosynthesis" in traits or "chloroplasts" in traits:
+        return "Phototrophic", "Photosynthetic conversion"
+    if "chemosynthesis" in traits:
+        return "Chemotrophic", "Redox gradient conversion"
+    if any(t in traits for t in ("herbivore", "carnivore", "omnivore", "detritivore", "filter_feeding", "parasitic")):
+        return "Heterotrophic", "Organic-matter energy conversion"
+    return "", ""
 
 
 def _energy_strategy_tag(manager, idx: int) -> str:
@@ -91,11 +79,13 @@ def _energy_strategy_tag(manager, idx: int) -> str:
     return ""
 
 
-def _structure_tag(metabolic_stress: float, energy: float) -> str:
-    """Very primitive structural / motility tag derived from dynamics."""
-    if energy >= 0.4 and metabolic_stress < 0.02:
+def _structure_tag(traits: Set[str]) -> str:
+    """Structural / motility tag derived primarily from traits."""
+    if not traits:
+        return ""
+    if any(t in traits for t in ("roots", "stationary")):
         return "Sessile"
-    if energy >= 0.4 and metabolic_stress >= 0.02:
+    if any(t in traits for t in ("cilia", "flagella", "fins", "legs", "wings", "tube_feet", "muscle")):
         return "Motile"
     return ""
 
@@ -114,27 +104,27 @@ def describe_identity(manager, world, idx: int) -> Dict[str, str]:
     if idx < 0 or idx >= manager.count or not manager.alive[idx]:
         return {}
 
+    # active traits decoded elsewhere (PixelManager.traits)
+    traits = set()
+    if hasattr(manager, "traits") and idx < len(manager.traits):
+        try:
+            traits = set(manager.traits[idx])
+        except Exception:
+            traits = set()
+
     # base ontological tag
-    base = _base_tag(manager, idx)
+    base = _base_tag(manager, idx, traits)
 
-    # environment around the pixel (for metabolism inference)
-    try:
-        x = int(round(float(manager.positions[idx, 0])))
-        y = int(round(float(manager.positions[idx, 1])))
-        get_env = getattr(world, "get_environment_inputs", None)
-        env_inputs = get_env(x, y, float(manager.time)) if callable(get_env) else {}
-    except Exception:
-        env_inputs = {}
+    # metabolism / structure derived dai tratti, non solo dall'ambiente
+    metab_tag, metab_desc = _metabolism_tag(traits)
 
-    metab_tag, metab_desc = _metabolism_tag(env_inputs)
-
-    # energetic strategy and stress
+    # energetic strategy e stress (solo se linea già un po' stabilizzata)
     metabolic_stress, energy_deficit_signal, homeostasis_error = _compute_metabolic_signals(manager, idx)
-    energy_tag = _energy_strategy_tag(manager, idx)
+    energy_tag = ""
+    if traits:
+        energy_tag = _energy_strategy_tag(manager, idx)
 
-    # structural tag
-    e = float(manager.energies[idx])
-    struct_tag = _structure_tag(metabolic_stress, e)
+    struct_tag = _structure_tag(traits)
 
     parts = [base]
     if metab_tag:
@@ -143,7 +133,7 @@ def describe_identity(manager, world, idx: int) -> Dict[str, str]:
         parts.append(energy_tag)
     if struct_tag:
         parts.append(struct_tag)
-    identity = " - ".join(parts)
+    identity = " - ".join([p for p in parts if p])
 
     # lineage age in ticks
     if hasattr(manager, "birth_time"):
@@ -168,4 +158,3 @@ def describe_identity(manager, world, idx: int) -> Dict[str, str]:
     info["energy_deficit_signal"] = f"{energy_deficit_signal:.3f}"
 
     return info
-

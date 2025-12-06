@@ -53,10 +53,10 @@ class MapGenerator:
         # 1) CONTINENT MASK (FRAGMENTED)
         # -------------------------------
 
-        base = self._make_noise(scale=1000.0, octaves=2)
+        base = self._make_noise(scale=900.0, octaves=3)
         detail = self._make_noise(scale=260.0, octaves=4)
-        rift = self._make_noise(scale=90.0, octaves=5)
-        shred = self._make_noise(scale=45.0, octaves=5)
+        rift = self._make_noise(scale=120.0, octaves=5)
+        shred = self._make_noise(scale=60.0, octaves=5)
 
         base = self._normalize(base)
         detail = self._normalize(detail)
@@ -157,9 +157,10 @@ class MapGenerator:
         freq = 1.0 / scale
 
         for y in range(self.height):
-            ny = y * freq + self.seed
+            ny = (y + self._offset_y) * freq
             for x in range(self.width):
-                nx = x * freq + self.seed
+                # slight shear between x e y per rompere bande troppo regolari
+                nx = (x + 0.35 * y + self._offset_x) * freq
                 arr[y, x] = pnoise2(nx, ny, octaves=octaves, base=self.seed)
 
         return arr
