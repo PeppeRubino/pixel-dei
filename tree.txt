@@ -1,44 +1,33 @@
 /src
-  main.py
-  config.py
-
-  core/
-    simulation.py
-    time_manager.py
-    serializer.py
+  main.py                # entry point simulazione Arcade
 
   world/
-    world.py             # struttura del mondo (mappa + ecosistema)
-    biome.py             # tipi di biomi e proprietà
-    map_generator.py     # generazione procedural
-    physics.py           # movimento, interazioni base
-    resources.py         # atomi, risorse, energia
+    world.py             # mappa, campi climatici e biomi
+    biome.py             # definizione biomi e colori
+    map_generator.py     # generazione procedurale del mondo
+    config.py            # costanti globali del clima
+    environment.py       # canali ambientali per bioma (LIGHT, H2S, ecc.)
+    phisics.py           # movimento / interazioni base (placeholder)
+    resources.py         # atomi, risorse e ResourceGrid
 
   pixel/
-    pixel.py             # singolo pixel (cellula)
-    genome.py            # tratti, mutazioni
-    metabolism.py        # consumo risorse
-    reproduction.py      # regole di riproduzione
-    behaviors.py         # AI elementare (heuristic/policy)
-    pixel_manager.py     # gestione di tutti i pixel
+    pixel.py             # singolo pixel (cellula) per debug/serializzazione
+    genome.py            # rappresentazione e similarità genomica
+    metabolism.py        # risorse interne, metabolismo e costi
+    reproduction.py      # logica di divisione 1->2 e helper sessuali
+    behaviors.py         # AI elementare (heuristiche di movimento)
+    pixel_manager.py     # gestione di tutti i pixel, update per tick
+    traits.py            # tratti evolutivi di alto livello e prerequisiti
 
-  events/
-    event_system.py      # gestione e dispatch
-    world_events.py
-    pixel_events.py
+  commands/
+    mouse_input.py       # gestione input mouse e delega ad ArcadeRenderer
 
   rendering/
-    renderer.py          # interfaccia astratta
-    arcade_renderer.py   # implementazione con Arcade
-    debug_renderer.py
+    renderer.py          # interfaccia astratta dei renderer
+    arcade_renderer.py   # renderer grafico principale (Arcade + GUI)
+    debug_renderer.py    # renderer testuale/headless
 
   ui/
-    hud.py               # info NPC
-    input.py             # click, selezione cellula
-    panels.py            # pannelli info
+    input.py             # helper input e bottoni UI
+    panels.py            # layout e pannelli stile macOS
 
-  utils/
-    math_utils.py
-    random_utils.py
-    profiler.py
-    logger.py

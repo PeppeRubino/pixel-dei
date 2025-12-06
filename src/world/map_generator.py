@@ -7,18 +7,33 @@ Optimized for high resolutions (1024x512 and above).
 """
 import os
 import time
+import random
+from typing import Optional, Tuple
+
 import numpy as np
 from noise import pnoise2
-from typing import Optional, Tuple
 from PIL import Image
 
 from .biome import biome_from_env
+from .config import (
+    EQUATOR_TEMP_C,
+    POLE_TEMP_C,
+    LAPSE_RATE_C_PER_ELEV,
+    TEMP_NOISE_AMPL_C,
+    HUMIDITY_OCEAN,
+    HUMIDITY_LAND_SCALE,
+    CONTINENT_THRESHOLD_PERCENTILE,
+)
 
 
 class MapGenerator:
     def __init__(self, size: Tuple[int, int] = (1024, 512), seed: Optional[int] = None):
         self.width, self.height = size
         self.seed = seed if seed is not None else int(time.time())
+        self._rng = random.Random(self.seed)
+        # Offsets de-correlate different worlds while keeping determinism per seed
+        self._offset_x = self._rng.randint(0, 10_000)
+        self._offset_y = self._rng.randint(0, 10_000)
 
     # --------------------------------------------------------
     # MAIN GENERATION (VECTORIZED & FAST)
@@ -38,18 +53,21 @@ class MapGenerator:
         # 1) CONTINENT MASK (FRAGMENTED)
         # -------------------------------
 
-        base = self._make_noise(scale=900.0, octaves=2)
-        detail = self._make_noise(scale=220.0, octaves=4)
-        rift = self._make_noise(scale=80.0, octaves=5)
+        base = self._make_noise(scale=1000.0, octaves=2)
+        detail = self._make_noise(scale=260.0, octaves=4)
+        rift = self._make_noise(scale=90.0, octaves=5)
+        shred = self._make_noise(scale=45.0, octaves=5)
 
         base = self._normalize(base)
         detail = self._normalize(detail)
         rift = self._normalize(rift)
 
-        continent_mask = 0.6 * base + 0.25 * detail - 0.25 * rift
+        continent_mask = 0.45 * base + 0.30 * detail - 0.30 * rift + 0.15 * shred
         continent_mask = self._normalize(continent_mask)
 
-        land = continent_mask > 0.52
+        # Use a percentile-based threshold so land/ocean balance adapts across seeds
+        land_threshold = float(np.percentile(continent_mask, CONTINENT_THRESHOLD_PERCENTILE))
+        land = continent_mask > land_threshold
 
         # -------------------------------
         # 2) ELEVATION
@@ -60,34 +78,58 @@ class MapGenerator:
         elevation = self._normalize(elevation)
 
         # -------------------------------
-        # 3) GLOBAL TEMPERATURE (LATITUDE)
+        # 3) LATITUDE FIELD (0 POLES, 1 EQUATOR)
         # -------------------------------
 
-        lat_temp = self._temperature_from_latitude()
+        rows = np.arange(self.height, dtype=np.float32)
+        lat_frac_1d = 1.0 - np.abs(rows - self.height / 2.0) / (self.height / 2.0)
+        lat_frac_1d = np.clip(lat_frac_1d, 0.0, 1.0)
+        lat_frac = np.tile(lat_frac_1d[:, None], (1, self.width))
+
+        # -------------------------------
+        # 4) GLOBAL TEMPERATURE (PHYSICAL, THEN NORMALIZED)
+        # -------------------------------
+
+        # Base physical temperature in °C from latitude
+        temp_base_c = POLE_TEMP_C + (EQUATOR_TEMP_C - POLE_TEMP_C) * lat_frac
+
+        # Add some coherent noise as small ± variation
         temp_noise = self._normalize(self._make_noise(scale=180.0, octaves=3))
+        temp_noise_c = (temp_noise - 0.5) * (2.0 * TEMP_NOISE_AMPL_C)
 
-        temperature = 0.85 * lat_temp + 0.15 * temp_noise
-        temperature -= 0.55 * elevation  # altitude cooling
+        # Cool with elevation
+        # elevation is 0..1, interpret as fraction of max elevation span
+        alt_cooling_c = elevation * LAPSE_RATE_C_PER_ELEV
 
-        polar = np.abs(np.linspace(-1, 1, self.height))[:, None]
-        polar = np.tile(polar, (1, self.width))
-        temperature -= 0.35 * polar
+        temp_c = temp_base_c + temp_noise_c - alt_cooling_c
+        temp_c = np.clip(temp_c, POLE_TEMP_C, EQUATOR_TEMP_C)
 
-        temperature = self._normalize(temperature)
+        # Normalize back to 0..1 for the rest of the engine
+        temperature = (temp_c - POLE_TEMP_C) / (EQUATOR_TEMP_C - POLE_TEMP_C + 1e-12)
+        temperature = np.clip(temperature, 0.0, 1.0)
 
         # -------------------------------
-        # 4) HUMIDITY (FAST MODEL)
+        # 5) HUMIDITY (LATITUDE + OROGRAPHY)
         # -------------------------------
 
-        humidity = self._normalize(self._make_noise(scale=160.0, octaves=4))
-        humidity = np.where(land, humidity * 0.85, 1.0)
+        humidity_noise = self._normalize(self._make_noise(scale=160.0, octaves=4))
+
+        # More humid near equator, drier near poles
+        humidity = humidity_noise * (0.6 + 0.4 * lat_frac)
+        # Mountains tend to be drier, valleys more humid
+        humidity *= (1.0 - 0.3 * elevation)
+
+        # Oceans are very humid; land scaled down a bit
+        humidity = np.where(land, humidity * HUMIDITY_LAND_SCALE, HUMIDITY_OCEAN)
         humidity = self._normalize(humidity)
 
         # -------------------------------
-        # 5) PRESSURE
+        # 6) LATITUDE / PRESSURE PROXY
         # -------------------------------
 
-        pressure = self._normalize(self._make_noise(scale=320.0, octaves=2))
+        # Encode normalized latitude (0=poles, 1=equator) into the "pressure" field.
+        # biome_from_env uses this to approximate climatic zones.
+        pressure = lat_frac
 
         if save_path:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)

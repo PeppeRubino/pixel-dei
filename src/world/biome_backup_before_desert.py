@@ -86,14 +86,14 @@ def biome_from_env(
     pressure : float
         Used as a proxy for latitude: 0 ~ poles, 1 ~ equator.
     global_o2 : float, optional
-        Approximate global atmospheric O2 fraction. Higher values allow
-        more energetically expensive biomes (forests, complex ecosystems).
+        Approximate global atmospheric O₂ fraction. Higher values allow
+        more energetically expensive biomi (foreste dense, ecosistemi complessi).
     organic_layer : float, optional
-        Slow memory of accumulated organic matter (from deaths, detritus).
+        Lenta memoria del suolo organico accumulato (da morti, detriti).
     mineral_layer : float, optional
-        Local mineral/ion enrichment.
+        Arricchimento minerale/ioni nel suolo locale.
     vegetation_index : float, optional
-        Placeholder for density of structured phototrophs.
+        Placeholder per densità di fototrofi strutturati.
     """
     alt = elevation
     temp = temperature
@@ -149,39 +149,19 @@ def biome_from_env(
     # DESERTS & ARID ZONES
     # ------------------------
 
-    # Equatorial-to-subtropical dry belt: vogliamo un "centro" caldo e arido.
-    if temp > 0.6 and hum < 0.45 and 0.15 < lat_frac < 0.85:
+    # Subtropical dry belt, broadly 0.2-0.6 of lat_frac
+    if 0.2 < lat_frac < 0.6 and temp > 0.6 and hum < 0.35:
         # Rockier deserts at higher altitude
         if alt > 0.55:
             return Biome.ROCK_DESERT
         return Biome.DESERT
 
     # Very hot & dry anywhere -> desert
-    if temp > 0.8 and hum < 0.35:
+    if temp > 0.8 and hum < 0.25:
         return Biome.DESERT
 
     # ------------------------
-    # PRE-BIOTIC LAND SURFACES: NO MACRO VEGETATION
-    # ------------------------
-
-    # Se lo strato organico è quasi nullo, la superficie terrestre non supporta
-    # ancora praterie/savane/foreste. Usiamo versioni "barren".
-    if organic_layer < 0.02:
-        if temp > 0.5:
-            # caldo: tende al deserto/roccia
-            if hum > 0.6:
-                return Biome.ROCK_DESERT
-            return Biome.DESERT
-        if 0.25 < temp <= 0.5:
-            # mite: colline/montagne nude
-            if alt < 0.5:
-                return Biome.ROCK_DESERT
-            return Biome.MOUNTAIN
-        # freddo ma non già catturato dalle regioni polari sopra
-        return Biome.ROCK_DESERT
-
-    # ------------------------
-    # TROPICAL FORESTS / RAINFORESTS (dipendono da O2 e suolo organico)
+    # TROPICAL FORESTS / RAINFORESTS (dipendono da O₂ e suolo organico)
     # ------------------------
 
     very_humid = hum > 0.8
@@ -229,4 +209,10 @@ def biome_from_env(
     # ------------------------
 
     return Biome.GRASSLAND
+
+
+
+
+
+
 

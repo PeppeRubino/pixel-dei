@@ -2,8 +2,8 @@
 # --------------------------------------------------------
 # File: src/ui/input.py
 """
-Input helpers & simple button areas. The arcade renderer will use these
-for hover/click detection on UI elements.
+Input helpers & simple button areas.
+Previously used by the old Arcade renderer; can be reused by future GUI layers.
 """
 from typing import Tuple
 

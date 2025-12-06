@@ -26,17 +26,19 @@ if HERE not in sys.path:
 from world.world import World
 from world.resources import ResourceGrid
 from pixel.pixel_manager import PixelManager
+from simulation.core import Simulation
 
-# renderers
-try:
-    from rendering.arcade_renderer import ArcadeRenderer
-except Exception:
-    ArcadeRenderer = None
-
+# optional headless renderer
 try:
     from rendering.debug_renderer import DebugRenderer
 except Exception:
     DebugRenderer = None
+
+# DearPyGui GUI
+try:
+    from gui.dpg_app import run_dpg_app
+except Exception:
+    run_dpg_app = None
 
 
 def build_args():
@@ -53,7 +55,7 @@ def build_args():
 
     p.add_argument("--seed", type=int, default=0, help="Random seed for generator")
     p.add_argument("--tile-size", type=int, default=4, help="Tile size in pixels for rendering")
-    p.add_argument("--headless", action="store_true", help="Run headless debug renderer instead of Arcade GUI")
+    p.add_argument("--headless", action="store_true", help="Run headless debug renderer instead of GUI")
     return p.parse_args()
 
 
@@ -89,7 +91,7 @@ def main():
     pm.spawn_random(world, resource_grid, n=args.pixels, species_prefix="Spec")
 
     # choose renderer
-    if args.headless or ArcadeRenderer is None:
+    if args.headless:
         if DebugRenderer is None:
             print("[main] No debug renderer available. Exiting.")
             return
@@ -98,10 +100,14 @@ def main():
         dbg.run(ticks=1000, dt=1.0)
         return
 
-    # GUI
-    print("[main] Launching Arcade renderer (GUI)")
-    renderer = ArcadeRenderer(world, pm, window_size=(1200, 800), tile_size=args.tile_size)
-    renderer.run()
+    # GUI: DearPyGui-based single window
+    sim = Simulation(world, pm, resource_grid)
+    if run_dpg_app is None:
+        print("[main] DearPyGui GUI is not available. Ensure dearpygui is installed.")
+        return
+
+    print("[main] Launching DearPyGui renderer (GUI)")
+    run_dpg_app(sim)
 
 
 
