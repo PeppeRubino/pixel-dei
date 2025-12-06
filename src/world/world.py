@@ -52,6 +52,9 @@ class World:
         self.biome_map = np.empty((h, w), dtype=np.uint8)
         # map Biome values to small ints
         mapping = {b: i for i, b in enumerate(Biome)}
+
+        # primo passaggio: biomi base
+        raw_biomes = np.empty((h, w), dtype=object)
         for y in range(h):
             for x in range(w):
                 elev = float(self.elevation[y, x])
@@ -69,7 +72,41 @@ class World:
                     organic_layer=org,
                     mineral_layer=miner,
                 )
-                self.biome_map[y, x] = mapping[b]
+                raw_biomes[y, x] = b
+
+        # secondo passaggio: inserisci fiumi e laghi interni basati su adiacenza
+        for y in range(h):
+            for x in range(w):
+                b = raw_biomes[y, x]
+                elev = float(self.elevation[y, x])
+                humid = float(self.humidity[y, x])
+
+                if b in (Biome.OCEAN, Biome.WATER, Biome.LAKE, Biome.RIVER, Biome.BEACH):
+                    continue
+
+                # finestra locale 3x3
+                y0 = max(0, y - 1)
+                y1 = min(h - 1, y + 1)
+                x0 = max(0, x - 1)
+                x1 = min(w - 1, x + 1)
+
+                neighbors = {raw_biomes[yy, xx] for yy in range(y0, y1 + 1) for xx in range(x0, x1 + 1) if not (yy == y and xx == x)}
+
+                # corsi d'acqua: altitudine medio-bassa, umidità alta, vicinanza a oceano/lago/river
+                if 0.18 < elev < 0.55 and humid > 0.7:
+                    if any(nb in (Biome.OCEAN, Biome.WATER, Biome.LAKE, Biome.BEACH, Biome.RIVER) for nb in neighbors):
+                        raw_biomes[y, x] = Biome.RIVER
+                        continue
+
+                # laghi interni: tasche a bassa quota con umidità molto alta
+                if elev < 0.30 and humid > 0.8:
+                    if all(nb not in (Biome.OCEAN, Biome.WATER) for nb in neighbors):
+                        raw_biomes[y, x] = Biome.LAKE
+
+        # scrivi nella mappa finale
+        for y in range(h):
+            for x in range(w):
+                self.biome_map[y, x] = mapping[raw_biomes[y, x]]
 
     def get_biome_at(self, x: int, y: int) -> Biome:
         """Return Biome enum at tile coordinates (x,y)."""

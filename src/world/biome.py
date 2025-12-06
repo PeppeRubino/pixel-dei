@@ -140,7 +140,9 @@ def biome_from_env(
     # POLAR & SUB-POLAR REGIONS
     # ------------------------
 
-    polar_region = lat_frac < 0.15 or lat_frac > 0.85
+    # con lat_frac=0 ai poli e =1 all'equatore, le regioni polari sono solo
+    # vicino a 0 (non vicino a 1!).
+    polar_region = lat_frac < 0.25
     if polar_region and alt > 0.50:
         # Tundra / glacier mix at high latitude + elevation
         if temp < 0.35:
@@ -151,8 +153,9 @@ def biome_from_env(
     # DESERTS & ARID ZONES
     # ------------------------
 
-    # Equatorial-to-subtropical dry belt: vogliamo un "centro" caldo e arido.
-    if temp > 0.6 and hum < 0.45 and 0.15 < lat_frac < 0.85:
+    # Equatorial-to-subtropical dry belt: vogliamo un "centro" caldo e arido
+    # concentrato nella fascia equatoriale (lat_frac alto).
+    if temp > 0.6 and hum < 0.45 and lat_frac > 0.5:
         # Rockier deserts at higher altitude
         if alt > 0.55:
             return Biome.ROCK_DESERT

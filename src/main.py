@@ -27,6 +27,7 @@ from world.world import World
 from world.resources import ResourceGrid
 from pixel.pixel_manager import PixelManager
 from simulation.core import Simulation
+from simulation.metrics import RunRecorder
 
 # optional headless renderer
 try:
@@ -102,12 +103,29 @@ def main():
 
     # GUI: DearPyGui-based single window
     sim = Simulation(world, pm, resource_grid)
+    # attach lightweight metrics recorder so each run produces a CSV
+    meta = {
+        "map_path": args.map or "",
+        "pixels": args.pixels,
+        "size_w": size[0],
+        "size_h": size[1],
+        "seed": args.seed,
+        # engine metadata for long-term archival
+        "sim_version": "0.4.3",
+        "biome_model": "v2",
+        "climate_model": "perlin_multiscale",
+    }
+    sim.metrics = RunRecorder(label=f"seed{args.seed}", seed=args.seed or 0, sample_every=20, meta=meta)
     if run_dpg_app is None:
         print("[main] DearPyGui GUI is not available. Ensure dearpygui is installed.")
         return
 
     print("[main] Launching DearPyGui renderer (GUI)")
     run_dpg_app(sim)
+
+    # after GUI closes, save metrics if any were collected
+    if sim.metrics is not None:
+        sim.metrics.save()
 
 
 

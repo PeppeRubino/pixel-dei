@@ -8,6 +8,8 @@
 
 from typing import Optional, Dict, Any
 
+from .metrics import RunRecorder
+
 
 class Simulation:
     def __init__(self, world, pixel_manager, resource_grid: Optional[object] = None):
@@ -24,6 +26,9 @@ class Simulation:
         self.world = world
         self.pixels = pixel_manager
         self.resource_grid = resource_grid
+
+        # optional metrics recorder (can be attached by callers)
+        self.metrics: Optional[RunRecorder] = None
 
         # simulation time in arbitrary units (ticks or seconds)
         self.time: float = 0.0
@@ -55,6 +60,13 @@ class Simulation:
         self.pixels.step(eff_dt, self.world, self.resource_grid)
         self.time += eff_dt
 
+        if self.metrics is not None:
+            try:
+                self.metrics.update(self, eff_dt)
+            except Exception:
+                # Metrics collection must never break the main simulation loop.
+                pass
+
     # -------------------------------------------------
     # SNAPSHOT FOR RENDERERS
     # -------------------------------------------------
@@ -73,4 +85,3 @@ class Simulation:
             "paused": self.paused,
             "speed": self.speed,
         }
-

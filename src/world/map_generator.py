@@ -86,6 +86,11 @@ class MapGenerator:
         lat_frac_1d = np.clip(lat_frac_1d, 0.0, 1.0)
         lat_frac = np.tile(lat_frac_1d[:, None], (1, self.width))
 
+        # Aggiungi una piccola perturbazione di rumore per evitare bande climatiche
+        lat_noise = self._normalize(self._make_noise(scale=320.0, octaves=2))
+        lat_noise = (lat_noise - 0.5) * 0.25  # deviazione massima ±0.125
+        lat_frac = np.clip(lat_frac + lat_noise, 0.0, 1.0)
+
         # -------------------------------
         # 4) GLOBAL TEMPERATURE (PHYSICAL, THEN NORMALIZED)
         # -------------------------------
@@ -128,7 +133,7 @@ class MapGenerator:
         # -------------------------------
 
         # Encode normalized latitude (0=poles, 1=equator) into the "pressure" field.
-        # biome_from_env uses this to approximate climatic zones.
+        # biome_from_env uses this to approximate climatic zones (con rumore).
         pressure = lat_frac
 
         if save_path:
