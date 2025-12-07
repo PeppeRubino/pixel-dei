@@ -4,6 +4,11 @@
 Global Earth-like FAST map generator.
 Produces fragmented continents, large oceans, polar ice, deserts and forests.
 Optimized for high resolutions (1024x512 and above).
+
+Nota: rispetto alla versione iniziale abbiamo reso
+  - il campo di "latitudine" piú deformato
+  - l'umidità meno dipendente in modo lineare dalla latitudine
+per ridurre le bande climatiche perfettamente orizzontali.
 """
 import os
 import time
@@ -14,7 +19,7 @@ import numpy as np
 from noise import pnoise2
 from PIL import Image
 
-from .biome import biome_from_env
+from .biome import biome_from_env, color_for_biome
 from .config import (
     EQUATOR_TEMP_C,
     POLE_TEMP_C,
@@ -86,9 +91,11 @@ class MapGenerator:
         lat_frac_1d = np.clip(lat_frac_1d, 0.0, 1.0)
         lat_frac = np.tile(lat_frac_1d[:, None], (1, self.width))
 
-        # Aggiungi una piccola perturbazione di rumore per evitare bande climatiche
-        lat_noise = self._normalize(self._make_noise(scale=320.0, octaves=2))
-        lat_noise = (lat_noise - 0.5) * 0.25  # deviazione massima ±0.125
+        # Perturbazione di rumore piú forte per evitare bande climatiche troppo regolari.
+        # Usiamo un Perlin leggermente inclinato in modo da ottenere fasce incurvate.
+        lat_noise = self._normalize(self._make_noise(scale=260.0, octaves=3))
+        # deviazione massima ~±0.25
+        lat_noise = (lat_noise - 0.5) * 0.5
         lat_frac = np.clip(lat_frac + lat_noise, 0.0, 1.0)
 
         # -------------------------------
@@ -118,9 +125,13 @@ class MapGenerator:
         # -------------------------------
 
         humidity_noise = self._normalize(self._make_noise(scale=160.0, octaves=4))
+        # componente a scala piú piccola per rompere eventuali bande nette
+        humidity_small = self._normalize(self._make_noise(scale=80.0, octaves=3))
 
-        # More humid near equator, drier near poles
-        humidity = humidity_noise * (0.6 + 0.4 * lat_frac)
+        # More humid near equator, drier near poles, ma con forte struttura locale
+        humidity = humidity_noise * (0.4 + 0.6 * lat_frac)
+        humidity = 0.7 * humidity + 0.3 * humidity_small
+
         # Mountains tend to be drier, valleys more humid
         humidity *= (1.0 - 0.3 * elevation)
 
@@ -143,7 +154,7 @@ class MapGenerator:
                 elevation=elevation,
                 humidity=humidity,
                 temperature=temperature,
-                pressure=pressure
+                pressure=pressure,
             )
 
         return {
@@ -194,11 +205,16 @@ class MapGenerator:
         ys = (np.linspace(0, h_src - 1, out_h)).astype(np.int32)
 
         elev_r = fields["elevation"][np.ix_(ys, xs)]
-        temp_r  = fields["temperature"][np.ix_(ys, xs)]
-        hum_r   = fields["humidity"][np.ix_(ys, xs)]
+        temp_r = fields["temperature"][np.ix_(ys, xs)]
+        hum_r = fields["humidity"][np.ix_(ys, xs)]
         press_r = fields["pressure"][np.ix_(ys, xs)]
 
         rgb = np.zeros((out_h, out_w, 3), dtype=np.uint8)
+
+        # semplice campo di rumore locale per visualizzare la stessa
+        # frastagliatura usata nel mondo reale
+        rng = np.random.default_rng(self.seed if hasattr(self, "seed") else 0)
+        noise = rng.random((out_h, out_w), dtype=np.float32)
 
         for j in range(out_h):
             for i in range(out_w):
@@ -206,11 +222,13 @@ class MapGenerator:
                     float(elev_r[j, i]),
                     float(temp_r[j, i]),
                     float(hum_r[j, i]),
-                    float(press_r[j, i])
+                    float(press_r[j, i]),
+                    local_noise=float(noise[j, i]),
                 )
-                rgb[j, i] = biome.color
+                rgb[j, i] = color_for_biome(biome)
 
-        img = Image.fromarray(rgb, mode='RGB')
+        img = Image.fromarray(rgb, mode="RGB")
         if save_path:
             img.save(save_path)
         return img
+

@@ -2,29 +2,35 @@
 """
 Biome definitions and utilities.
 The classifier is inspired by an earlier probabilistic zone generator,
-but uses deterministic rules over normalized fields.
+but uses deterministic rules over normalized fields with a pinch of
+local noise to avoid banded artefacts.
 """
+
 from enum import Enum
 from typing import Tuple
 
 
-# Simple RGB color tuples for rendering
-# Colors are intentionally vivid to make the map visually rich.
+# Simple RGB color tuples for rendering.
+# Colors are intentionally vivid so biomes are easy to distinguish.
 BIOME_COLORS = {
     "OCEAN": (10, 40, 140),
     "WATER": (40, 140, 210),
-    "BEACH": (242, 220, 180),
-    "DESERT": (240, 200, 120),
-    "ROCK_DESERT": (210, 180, 110),
-    "GRASSLAND": (110, 200, 65),
+    # Slightly warmer, less white than before
+    "BEACH": (235, 210, 170),
+    # Deserts a bit more saturated so they do not look like snow
+    "DESERT": (225, 185, 90),
+    "ROCK_DESERT": (195, 165, 85),
+    # Pre‑biotic "grasslands"/plains are resembled with more arid tones;
+    # il vero verde apparirà solo tramite shading futuro.
+    "GRASSLAND": (170, 190, 120),
     "FOREST": (34, 139, 34),
     "RAINFOREST": (5, 120, 60),
     "SAVANNA": (200, 170, 80),
     "SWAMP": (40, 80, 50),
     "MANGROVE": (30, 120, 90),
     "MOUNTAIN": (150, 150, 160),
-    "HILLS": (140, 170, 100),
-    "PLAIN": (160, 200, 110),
+    "HILLS": (160, 180, 120),
+    "PLAIN": (190, 200, 130),
     "TUNDRA": (170, 190, 210),
     "SNOW": (245, 245, 245),
     "GLACIER": (210, 235, 255),
@@ -58,7 +64,7 @@ class Biome(Enum):
 
 
 def color_for_biome(b: Biome) -> Tuple[int, int, int]:
-    # Use a vivid magenta as explicit fallback if a biome has no color
+    """Return RGB color for a biome, using a vivid fallback if missing."""
     return BIOME_COLORS.get(b.value, (255, 0, 255))
 
 
@@ -71,6 +77,7 @@ def biome_from_env(
     organic_layer: float = 0.0,
     mineral_layer: float = 0.0,
     vegetation_index: float = 0.0,
+    local_noise: float = 0.0,
 ) -> Biome:
     """
     Map environmental scalar values (0..1) to a Biome enum.
@@ -91,14 +98,19 @@ def biome_from_env(
     organic_layer : float, optional
         Slow memory of accumulated organic matter (from deaths, detritus).
     mineral_layer : float, optional
-        Local mineral/ion enrichment.
+        Local mineral/ion enrichment (currently unused here but kept
+        for future extensions).
     vegetation_index : float, optional
         Placeholder for density of structured phototrophs.
+    local_noise : float, optional
+        Small-scale spatial noise in [0,1] used to break perfect bands
+        and give continents a more fragmented look.
     """
     alt = elevation
     temp = temperature
     hum = humidity
     lat_frac = pressure  # 0 at poles, 1 at equator
+    n = max(0.0, min(1.0, local_noise))
 
     # ------------------------
     # WATER & COASTLINE
@@ -109,7 +121,7 @@ def biome_from_env(
 
     # Shallow water / lakes near land
     if alt < 0.16:
-        if hum > 0.5:
+        if hum > 0.55:
             return Biome.LAKE
         return Biome.WATER
 
@@ -121,9 +133,8 @@ def biome_from_env(
     # EXTREME ALTITUDE (MOUNTAINS, GLACIERS, VOLCANOES)
     # ------------------------
 
-    # Glaciers solo a latitudini sufficientemente polari, non all'equatore
+    # Glaciers only at sufficiently polar latitudes, never at the equator
     if alt > 0.85 and temp < 0.35 and lat_frac < 0.35:
-        # High + cold + mid/high latitudes -> glaciers
         return Biome.GLACIER
 
     if alt > 0.80 and hum < 0.25 and temp > 0.6:
@@ -131,7 +142,7 @@ def biome_from_env(
         return Biome.VOLCANIC
 
     if alt > 0.80:
-        # Neve perenne solo fuori dalla fascia tropicale
+        # Permanent snow only outside the tropical belt
         if temp < 0.35 and lat_frac < 0.4:
             return Biome.SNOW
         return Biome.MOUNTAIN
@@ -140,11 +151,8 @@ def biome_from_env(
     # POLAR & SUB-POLAR REGIONS
     # ------------------------
 
-    # con lat_frac=0 ai poli e =1 all'equatore, le regioni polari sono solo
-    # vicino a 0 (non vicino a 1!).
     polar_region = lat_frac < 0.25
     if polar_region and alt > 0.50:
-        # Tundra / glacier mix at high latitude + elevation
         if temp < 0.35:
             return Biome.TUNDRA
         return Biome.SNOW
@@ -153,10 +161,9 @@ def biome_from_env(
     # DESERTS & ARID ZONES
     # ------------------------
 
-    # Equatorial-to-subtropical dry belt: vogliamo un "centro" caldo e arido
-    # concentrato nella fascia equatoriale (lat_frac alto).
-    if temp > 0.6 and hum < 0.45 and lat_frac > 0.5:
-        # Rockier deserts at higher altitude
+    # Equatorial-to-subtropical dry belt: we want a warm/dry centre
+    # concentrated near the equator (lat_frac high).
+    if temp > 0.6 and hum < 0.45 and lat_frac > 0.45:
         if alt > 0.55:
             return Biome.ROCK_DESERT
         return Biome.DESERT
@@ -169,24 +176,39 @@ def biome_from_env(
     # PRE-BIOTIC LAND SURFACES: NO MACRO VEGETATION
     # ------------------------
 
-    # Se lo strato organico è quasi nullo, la superficie terrestre non supporta
-    # ancora praterie/savane/foreste. Usiamo versioni "barren".
+    # When the organic layer is essentially absent the surface cannot yet
+    # support true grasslands/forests. We use "barren" variants but mix
+    # them with local_noise so continents are patchy, not banded.
     if organic_layer < 0.02:
-        if temp > 0.5:
-            # caldo: tende al deserto/roccia
-            if hum > 0.6:
-                return Biome.ROCK_DESERT
-            return Biome.DESERT
-        if 0.25 < temp <= 0.5:
-            # mite: colline/montagne nude
-            if alt < 0.5:
-                return Biome.ROCK_DESERT
+        warm = temp > 0.55
+        mid = 0.30 < temp <= 0.55
+
+        if warm:
+            # Warm belt: mix of deserts, rocky deserts and some bare plains
+            if hum < 0.35:
+                return Biome.ROCK_DESERT if n > 0.4 else Biome.DESERT
+            if hum < 0.6:
+                if alt > 0.6 and n > 0.6:
+                    return Biome.MOUNTAIN
+                return Biome.ROCK_DESERT if n > 0.5 else Biome.DESERT
+            # Warmer but more humid -> barren plains/hills
+            return Biome.PLAIN if n > 0.3 else Biome.HILLS
+
+        if mid:
+            # Temperate but pre-biotic: hills, plains and some mountains
+            if alt < 0.35:
+                return Biome.PLAIN if n > 0.2 else Biome.DESERT
+            if alt < 0.65:
+                return Biome.HILLS if n > 0.3 else Biome.ROCK_DESERT
             return Biome.MOUNTAIN
-        # freddo ma non già catturato dalle regioni polari sopra
-        return Biome.ROCK_DESERT
+
+        # Cold but not yet polar/tundra from the earlier branch
+        if alt > 0.65 and n > 0.4:
+            return Biome.MOUNTAIN
+        return Biome.ROCK_DESERT if n > 0.5 else Biome.TUNDRA
 
     # ------------------------
-    # TROPICAL FORESTS / RAINFORESTS (dipendono da O2 e suolo organico)
+    # TROPICAL FORESTS / RAINFORESTS
     # ------------------------
 
     very_humid = hum > 0.8
@@ -200,13 +222,12 @@ def biome_from_env(
     # ------------------------
 
     if hum > 0.7 and alt < 0.35:
-        # Warmer latitudes -> mangroves, cooler -> swamp
         if lat_frac > 0.4:
             return Biome.MANGROVE
         return Biome.SWAMP
 
     # ------------------------
-    # TEMPERATE MIXED ZONES (GRASSLAND / FOREST / SAVANNA / HILLS)
+    # TEMPERATE MIXED ZONES
     # ------------------------
 
     # Transitional: moderate humidity and temperature

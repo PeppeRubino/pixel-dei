@@ -213,20 +213,38 @@ class WorldViewMixin:
                 except Exception:
                     tset = set()
 
+            # Palette: sfumature di azzurro per "specie" (insiemi di tratti).
+            # Senza tratti: azzurro neutro molto chiaro.
             if not tset:
-                base_r, base_g, base_b = 80, 210, 255
+                base_r, base_g, base_b = 90, 210, 255
             else:
                 sig = "".join(sorted(tset))
-                h = sum(ord(c) for c in sig)
-                base_r = 80 + (h * 37) % 150
-                base_g = 80 + (h * 57) % 150
-                base_b = 80 + (h * 97) % 150
+                h_val = sum(ord(c) for c in sig)
+                # mappa h_val in [0,1]
+                t = (h_val * 0.6180339887) % 1.0
+                # gradiente tra turchese -> blu -> violetto
+                if t < 0.5:
+                    # da (70,200,255) a (40,120,255)
+                    alpha = t / 0.5
+                    base_r = int(70 + (40 - 70) * alpha)
+                    base_g = int(200 + (120 - 200) * alpha)
+                    base_b = 255
+                else:
+                    # da (40,120,255) a (150,80,255)
+                    alpha = (t - 0.5) / 0.5
+                    base_r = int(40 + (150 - 40) * alpha)
+                    base_g = int(120 + (80 - 120) * alpha)
+                    base_b = 255
 
+            # luminosità ∝ energia (resta sempre visibile anche a bassa E)
             factor = 0.4 + 0.6 * max(0.0, min(1.0, e))
             r = int(base_r * factor)
             g = int(base_g * factor)
             b = int(base_b * factor)
             col = (r, g, b, 255)
 
-            dpg.draw_circle(center=(sx, sy), radius=3.0, color=col, fill=col, parent="world_drawlist")
-
+            radius = 3.0
+            # evidenzia il pixel selezionato con un contorno
+            if getattr(self, "selected_pixel", None) == i:
+                dpg.draw_circle(center=(sx, sy), radius=radius + 1.5, color=(255, 255, 255, 255), fill=(0, 0, 0, 0), parent="world_drawlist")
+            dpg.draw_circle(center=(sx, sy), radius=radius, color=col, fill=col, parent="world_drawlist")

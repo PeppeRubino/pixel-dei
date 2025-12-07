@@ -64,8 +64,10 @@ def step_pixel_metabolism(manager, idx: int, env_inputs: Dict[str, float], dt: f
     genome_obj = manager.genomes[idx] if idx < len(manager.genomes) else None
     genome_data = getattr(genome_obj, "data", None)
     if genome_data is None:
-        # no genome: simple baseline decay of energy
-        stocks[IDX_ENERGY] -= 0.001 * dt
+        # no genome: semplice decadimento piuttosto rapido dell'energia.
+        # Con dt≈1/60 e costo 0.006, l'energia cala in ~10–20 anni
+        # se non interviene alcun metabolismo efficace.
+        stocks[IDX_ENERGY] -= 0.006 * dt
         stocks[IDX_ENERGY] = max(0.0, float(stocks[IDX_ENERGY]))
         manager.energies[idx] = float(stocks[IDX_ENERGY])
         return
@@ -85,7 +87,9 @@ def step_pixel_metabolism(manager, idx: int, env_inputs: Dict[str, float], dt: f
     active_traits = traits[idx] if traits is not None and idx < len(traits) else set()
 
     # Basal metabolic costs (energy + membrane maintenance)
-    basal_energy_cost = 0.001
+    # aumentato per rendere la vita delle unità neutre intrinsecamente breve
+    # su scale di decine d'anni, a meno che il metabolismo trovi un equilibrio.
+    basal_energy_cost = 0.006
     membrane_cost = 0.0005 * stocks[IDX_MEMBRANE]
 
     # Apply fluxes

@@ -37,9 +37,12 @@ class RunRecorder:
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     # optional extra metadata (global params, code version, etc.)
     meta: Dict[str, Any] = field(default_factory=dict)
-    sample_every: int = 20
+    # sampling control: at most one row per simulated year, but callers
+    # can still require a minimum step interval via sample_every.
+    sample_every: int = 1
 
     step_count: int = 0
+    last_year_sampled: int = 0  # calendar year label last written (0 = none)
     rows: List[Dict[str, Any]] = field(default_factory=list)
 
     def update(self, sim: "Simulation", eff_dt: float) -> None:
@@ -47,8 +50,17 @@ class RunRecorder:
         Sample metrics from the current simulation state.
         """
         self.step_count += 1
+        # opzionale: vincolo minimo in step fra due campioni
         if self.step_count % max(1, self.sample_every) != 0:
             return
+
+        # convenzione globale: 1.0 unità di sim.time ≃ 1 mese
+        total_months = float(sim.time)
+        calendar_year = int(total_months // 12) + 1
+        # registriamo al massimo un campione per anno di calendario
+        if calendar_year == self.last_year_sampled:
+            return
+        self.last_year_sampled = calendar_year
 
         world = sim.world
         pm = sim.pixels
@@ -111,7 +123,10 @@ class RunRecorder:
         global_co2 = float(getattr(world, "global_co2", 0.0))
 
         row = {
-            "time": float(sim.time),
+            # tempo grezzo della simulazione
+            "tick": int(self.step_count),
+            "time": total_months,  # mesi simulati totali
+            "year": calendar_year,  # anno di calendario (uguale alla GUI)
             "population": alive,
             "avg_energy": avg_energy,
             "var_energy": var_energy,

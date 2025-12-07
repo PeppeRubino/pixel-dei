@@ -22,6 +22,7 @@ import math
 import numpy as np
 
 from .pixel import Pixel
+from world.biome import Biome
 
 
 def _module_exists(module_name: str) -> bool:
@@ -126,14 +127,48 @@ class PixelManager:
     # ------------------------------------------------------------------
 
     def spawn_random(self, world, resource_grid=None, n: int = 100, species_prefix: str = "Spec") -> List[int]:
+        """Spawn iniziale dei pixel.
+
+        Tutti gli individui nascono in una singola regione locale, scelta
+        casualmente ma *in prossimità dell'acqua* (oceano/costa/lago/fiume).
+        Questo rappresenta un "luogo di origine" per run e rende più
+        probabile l'emergere di una linea evolutiva, mantenendo però
+        casuale dove avviene.
+        """
         ids: List[int] = []
         h, w = world.size[1], world.size[0]
+
+        # scegli un solo centro casuale MA vicino all'acqua
+        water_biomes = {Biome.OCEAN, Biome.WATER, Biome.LAKE, Biome.RIVER}
+        beach_like = {Biome.BEACH, Biome.MANGROVE, Biome.SWAMP}
+        rng = np.random.default_rng()
+        cx, cy = None, None
+        for _ in range(2000):
+            tx = rng.integers(0, w)
+            ty = rng.integers(0, h)
+            b = world.get_biome_at(int(tx), int(ty))
+            if b in water_biomes or b in beach_like:
+                cx, cy = float(tx), float(ty)
+                break
+        if cx is None or cy is None:
+            # fallback: centro puramente casuale
+            cx = np.random.rand() * (w - 1)
+            cy = np.random.rand() * (h - 1)
+        # raggio locale (in tile) intorno al centro
+        sigma = max(2.0, min(w, h) * 0.02)  # ~2% della dimensione come deviazione
+
         for _ in range(n):
             if self.count >= self.capacity:
                 break
             idx = self.count
-            x = np.random.rand() * (w - 1)
-            y = np.random.rand() * (h - 1)
+
+            # spawn in un intorno gaussiano del centro
+            x = np.random.normal(cx, sigma)
+            y = np.random.normal(cy, sigma)
+            # clamp ai bordi del mondo
+            x = max(0.0, min(float(w - 1), x))
+            y = max(0.0, min(float(h - 1), y))
+
             self.positions[idx, 0] = x
             self.positions[idx, 1] = y
             self.energies[idx] = 1.0

@@ -21,6 +21,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class SidebarMixin:
     last_alive: int
+    max_alive: int
+    in_bottleneck: bool
     avg_energy: float
     avg_stress: float
     trait_diversity: int
@@ -61,13 +63,14 @@ class SidebarMixin:
 
             dpg.add_spacer(height=8)
             dpg.add_separator()
-            dpg.add_text("POPULATION TREND")
+            dpg.add_text("POPULATION / TRAITS")
 
-            with dpg.plot(label="Population", height=180, width=GUI_W - 40, tag="plot_population"):
+            with dpg.plot(label="Population / Traits", height=180, width=GUI_W - 40, tag="plot_population"):
                 dpg.add_plot_legend()
                 dpg.add_plot_axis(dpg.mvXAxis, tag="axis_x")
                 with dpg.plot_axis(dpg.mvYAxis, tag="axis_y"):
                     dpg.add_line_series([], [], label="Population", tag="series_population")
+                    dpg.add_line_series([], [], label="Avg traits per cell", tag="series_traits")
 
             dpg.add_spacer(height=8)
             dpg.add_separator()
@@ -127,18 +130,128 @@ class SidebarMixin:
             if alive > 0:
                 self.avg_traits_per_cell = total_traits / float(alive)
 
-        # evolution log base su cambi popolazione
+        # evolution log basato sui cambi di popolazione,
+        # ma con un concetto di "bottleneck" meno rumoroso:
+        # - tiene traccia del massimo storico
+        # - segnala bottleneck solo quando si scende sotto una
+        #   frazione significativa del massimo e solo una volta per episodio.
         if getattr(self, "last_alive", None) is None:
             self.last_alive = alive
+            self.max_alive = alive
+            self.in_bottleneck = False
         else:
+            # aggiorna massimo storico
+            self.max_alive = max(getattr(self, "max_alive", 0), alive)
+
             if alive == 0 and self.last_alive > 0:
                 self.evo_log.appendleft("Population extinct")
+                self.in_bottleneck = False
             elif alive > self.last_alive:
                 delta = alive - self.last_alive
-                self.evo_log.appendleft(f"{delta} new cells")
+                if delta > 0:
+                    self.evo_log.appendleft(f"{delta} new cells")
+                # uscita da un eventuale bottleneck
+                if getattr(self, "max_alive", 0) > 0 and alive > 0.3 * self.max_alive:
+                    self.in_bottleneck = False
             elif alive < self.last_alive:
-                self.evo_log.appendleft("Population bottleneck")
+                # calcola frazione rispetto al massimo storico
+                if getattr(self, "max_alive", 0) > 0:
+                    frac = alive / float(self.max_alive)
+                else:
+                    frac = 1.0
+                # considera "bottleneck" solo se la popolazione Þ scesa
+                # sotto il 20% del massimo e non Þ giÖ in bottleneck
+                if 0 < alive < self.last_alive and frac < 0.2 and not getattr(self, "in_bottleneck", False):
+                    self.evo_log.appendleft("Population bottleneck")
+                    self.in_bottleneck = True
             self.last_alive = alive
+
+        # "Notizie" evolutive rare (prima divisione, primi tratti, ecc.)
+
+        # baseline / flag iniziali per le notizie
+        if not hasattr(self, "initial_population"):
+            self.initial_population = alive
+        if not hasattr(self, "news_first_division"):
+            self.news_first_division = False
+        if not hasattr(self, "news_first_photosynthesis"):
+            self.news_first_photosynthesis = False
+        if not hasattr(self, "news_first_motility"):
+            self.news_first_motility = False
+        if not hasattr(self, "news_first_o2_rise"):
+            self.news_first_o2_rise = False
+        if not hasattr(self, "news_first_organic_soil"):
+            self.news_first_organic_soil = False
+        if not hasattr(self, "o2_baseline"):
+            self.o2_baseline = float(self.world.global_o2)
+
+        # 1) Prima divisione riuscita: popolazione supera il valore iniziale
+        if (
+            not self.news_first_division
+            and getattr(self, "initial_population", 0) > 0
+            and alive > self.initial_population
+        ):
+            self.evo_log.appendleft(f"{self._format_sim_time()} | First division observed")
+            self.news_first_division = True
+
+        # 2) Primo tratto fotosintetico
+        if not self.news_first_photosynthesis and traits_list is not None and alive > 0:
+            try:
+                found_photo = False
+                for i in range(self.pm.count):
+                    if not self.pm.alive[i]:
+                        continue
+                    try:
+                        tset = set(self.pm.traits[i])
+                    except Exception:
+                        tset = set()
+                    if "photosynthesis" in tset:
+                        found_photo = True
+                        break
+                if found_photo:
+                    self.evo_log.appendleft(f"{self._format_sim_time()} | First photosynthetic trait")
+                    self.news_first_photosynthesis = True
+            except Exception:
+                pass
+
+        # 3) Prima motilita attiva (cilia/flagella/fins/legs/wings)
+        if not self.news_first_motility and traits_list is not None and alive > 0:
+            motile_traits = ("cilia", "flagella", "fins", "legs", "wings")
+            try:
+                found_motile = False
+                for i in range(self.pm.count):
+                    if not self.pm.alive[i]:
+                        continue
+                    try:
+                        tset = set(self.pm.traits[i])
+                    except Exception:
+                        tset = set()
+                    if any(t in tset for t in motile_traits):
+                        found_motile = True
+                        break
+                if found_motile:
+                    self.evo_log.appendleft(f"{self._format_sim_time()} | First active motility trait")
+                    self.news_first_motility = True
+            except Exception:
+                pass
+
+        # 4) Primo aumento significativo di O2 globale
+        if (
+            not self.news_first_o2_rise
+            and float(self.world.global_o2) > self.o2_baseline + 0.005
+        ):
+            self.evo_log.appendleft(f"{self._format_sim_time()} | Atmospheric O2 rise detected")
+            self.news_first_o2_rise = True
+
+        # 5) Primo accumulo rilevante di suolo organico
+        org_layer = getattr(self.world, "organic_layer", None)
+        if org_layer is not None and not self.news_first_organic_soil:
+            try:
+                mean_org = float(np.mean(org_layer))
+                if mean_org > 0.02:
+                    self.evo_log.appendleft(f"{self._format_sim_time()} | First organic soil formation")
+                    self.news_first_organic_soil = True
+            except Exception:
+                pass
 
     # --------------------------- sidebar UI --------------------------
 
@@ -157,6 +270,14 @@ class SidebarMixin:
             xs = list(range(len(self.pop_history)))
             ys = list(self.pop_history)
             dpg.set_value("series_population", [xs, ys])
+            # linea secondaria: tratti medi per cellula (normalizzati per renderli visibili)
+            trait_series = []
+            # per semplicità, usiamo lo stesso xs e accumuliamo la storia dei tratti
+            if not hasattr(self, "_traits_history"):
+                self._traits_history = []
+            self._traits_history.append(self.avg_traits_per_cell)
+            trait_series = list(self._traits_history[-len(xs) :])
+            dpg.set_value("series_traits", [xs[: len(trait_series)], trait_series])
 
         # pixel selezionato
         if self.selected_pixel is not None and 0 <= self.selected_pixel < self.pm.count:
@@ -210,15 +331,13 @@ class SidebarMixin:
             dpg.set_value("txt_pixel_stress", "")
 
         # riepilogo + log
-        summary = (
-            f"{self._format_sim_time()} | "
-            f"Pop {alive} | "
-            f"Trait clusters {self.trait_diversity} | "
-            f"Avg traits {self.avg_traits_per_cell:.1f} | "
-            f"O2 {self.world.global_o2:.3f} | "
-            f"CO2 {self.world.global_co2:.5f}"
-        )
+        summary_lines = [
+            f"Time: {self._format_sim_time()}",
+            f"Population: {alive} (max {getattr(self, 'max_alive', alive)})",
+            f"Trait clusters: {self.trait_diversity}  |  Avg traits/cell: {self.avg_traits_per_cell:.1f}",
+            f"O2: {self.world.global_o2:.3f}   CO2: {self.world.global_co2:.5f}",
+        ]
+        summary = "\n".join(summary_lines)
         log_lines = "\n".join(list(self.evo_log))
-        full_text = summary + ("\n" + log_lines if log_lines else "")
+        full_text = summary + ("\n\n" + log_lines if log_lines else "")
         dpg.set_value("txt_event_log", full_text)
-
